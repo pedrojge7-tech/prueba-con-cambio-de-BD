@@ -18,6 +18,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  // Importamos setDoc y doc para poder sobrescribir bases de datos específicas
   import { getFirestore, collection, doc, setDoc, getDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -364,15 +365,16 @@ tbody td:first-child { text-align: left; }
 
 <div class="modal-overlay" id="shareModal">
   <div class="modal-box">
-    <h2>Generar modo lector</h2>
-    <p>Se genera un link único en la nube para compartir con tu cliente. Solo podrá ver el dashboard, sin modificar datos.</p>
+    <h2>Generar o Actualizar Link</h2>
+    <p>Escribe un nombre corto para tu reporte. Si usas uno que ya existe, <b>sobrescribirás sus datos</b> y el cliente verá lo nuevo usando su mismo link.</p>
+    <input type="text" id="customIdInput" class="link-input" placeholder="ej: reporte-abril-2026" style="margin-bottom:12px;">
     <div class="link-box">
-      <input class="link-input" id="linkInput" value="Haz clic en Generar para obtener el link" readonly>
+      <input class="link-input" id="linkInput" value="Haz clic en Guardar para obtener el link" readonly>
       <button class="btn-copy" id="btnCopyLink">Copiar</button>
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" id="btnCloseShare">Cancelar</button>
-      <button class="btn-reader" id="btnOpenReader">Generar link →</button>
+      <button class="btn-reader" id="btnOpenReader">Guardar en la nube →</button>
     </div>
   </div>
 </div>
@@ -554,18 +556,10 @@ function buildFilters() {
     btn.className = 'filter-chip filter-chip-dir truncated' + (activeDirs.has(dir) ? ' active' : '');
     btn.textContent = dir;
     btn.onclick = () => {
-      if(dir==='Todas'){ 
-        activeDirs.clear(); 
-        activeDirs.add('Todas'); 
-      } else { 
-        activeDirs.delete('Todas'); 
-        if(activeDirs.has(dir)) activeDirs.delete(dir); else activeDirs.add(dir); 
-        if(activeDirs.size===0) activeDirs.add('Todas'); 
-      }
-      activeDepts.clear(); 
-      activeDepts.add('Todos');
-      buildFilters(); 
-      updateAllViews();
+      if(dir==='Todas'){ activeDirs.clear(); activeDirs.add('Todas'); }
+      else { activeDirs.delete('Todas'); if(activeDirs.has(dir)) activeDirs.delete(dir); else activeDirs.add(dir); if(activeDirs.size===0) activeDirs.add('Todas'); }
+      activeDepts.clear(); activeDepts.add('Todos');
+      buildFilters(); updateAllViews();
     };
     fbDir.appendChild(btn);
   });
@@ -687,19 +681,16 @@ function classifyComment(text){
   // Limpiamos signos de puntuación y pasamos a minúsculas
   const t = text.toLowerCase().replace(/[.,!¡?¿()"']/g, '').trim();
   
-  // Destruimos si es muy corto y no tiene palabras clave de enojo
+  // Destruimos si es muy corto y no tiene palabras clave
   if(t.length < 5 && !t.match(/mal|peor|pago|falla|lento/)) return 'Ignorar';
 
-  // Matamos variaciones de "No hay comentarios", "Ninguno", "Ok"
+  // Matamos variaciones inservibles
   const uselessStarts = ['na', 'n/a', 'ningun', 'nada', 'todo ok', 'ok', 'todo bien', 'sin observaci', 'no tengo comentario', 'no hay comentario', 'sin comentario', 'todo excelente', 'excelente', 'muy bien', 'bien', 'sin detalle', 'desconozco', 'no conozco', 'ignoro', 'no aplica', 'todo en orden', 'sin queja', 'ninguna sugerencia', 'no ', 'si '];
   for(let start of uselessStarts){
     if(t.startsWith(start) || t === start) return 'Ignorar';
   }
-
-  // Matamos si la oración exacta es basura común
   if(/^(ok|bien|bueno|excelente|malo|pesimo|regular|na|n\/a|ninguno|ninguna|nada|x|todo bien)$/.test(t)) return 'Ignorar';
 
-  // Analizamos el texto crudo para las categorías (30 TEMAS)
   const raw = text.toLowerCase();
 
   if(raw.match(/sistema|software|portal|plataforma|red|conexi.n|aplicaci.n|computadora|laptop|mouse|teclado|monitor|pantalla|impresora|internet|falla|error de sistema|tecnolog/)) return 'Sistemas, Equipo y Tecnología';
@@ -725,11 +716,9 @@ function classifyComment(text){
   if(raw.match(/horario|turno|hora|salida|entrada|comida|permiso|vacaciones/)) return 'Horarios, Turnos y Permisos';
   if(raw.match(/carga|mucho trabajo|saturad|estr.s|presi|exceso|pesad/)) return 'Carga de Trabajo y Estrés';
   if(raw.match(/ambiente|clima|compañer|chisme|rumor|respeto|valores|cultura|equipo|integraci/)) return 'Clima Laboral y Compañerismo';
-
   if(raw.match(/falta|necesita|requiere|ocupamos|deber.an|sugerencia|recomiendo|mejorar|oportunidad/)) return 'Sugerencias de Mejora';
 
-  // Si a pesar de todo no entra en ninguna bolsa, va a esta:
-  return 'Sugerencias de Mejora'; 
+  return 'Observaciones Particulares'; 
 }
 
 function renderDeptTabs(orderedDepts){
@@ -835,7 +824,7 @@ function renderCatChips(dept){
     const btn = document.createElement('button');
     btn.className = 'cat-chip truncated';
     btn.title = label;
-    // SIN CLASE q-cell-inner PARA QUITAR EL RECORRIDO
+    // SIN CLASE q-cell-inner PARA QUITAR EL RECORRIDO EN HOVER
     btn.innerHTML = `<span class="chip-text">${label}</span><span class="cnt">${count}</span>`;
     btn.onclick = () => { document.querySelectorAll('.cat-chip').forEach(c=>c.classList.remove('active')); btn.classList.add('active'); onClick(); };
     return btn;
@@ -963,7 +952,6 @@ function renderDetailTable(orderedDepts, activeQIndices){
   tbl.querySelector('tbody').innerHTML = bodyHTML;
 }
 
-// ── TABLA PARTICIPACIÓN (SIN RECORRIDO/MARQUEE) ──
 function renderParticipation(orderedDepts) {
   const card = document.getElementById('participationCard');
   const tbl = document.getElementById('participationTable');
@@ -1108,6 +1096,11 @@ function rebuildDashboard(nDirs, nDepts, nMap, nQ, nSc, nComm, nPart, fname){
 }
 
 async function generateReaderLink(){
+  const rawId = document.getElementById('customIdInput').value.trim();
+  if(!rawId) { showToast('⚠️ Escribe un nombre para el enlace', 'err'); return; }
+  const customId = rawId.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  if(!customId) { showToast('⚠️ Usa letras o números', 'err'); return; }
+
   const btn = document.getElementById('btnOpenReader');
   btn.textContent='Subiendo a la nube…'; btn.disabled=true;
 
@@ -1118,15 +1111,19 @@ async function generateReaderLink(){
       comments: COMMENTS, participation: PARTICIPATION, title: document.getElementById('dashTitle').textContent, timestamp: REPORT_DATE.toISOString()
     };
     
-    const docRef = await window.fb.addDoc(window.fb.collection(window.fb.db, "reportes"), payload);
-    const link = window.location.origin + window.location.pathname + '?mode=reader&id=' + docRef.id;
+    // GUARDAR O ACTUALIZAR
+    await window.fb.setDoc(window.fb.doc(window.fb.db, "reportes", customId), payload);
+    
+    // LINK SEGURO
+    const baseURL = window.location.href.split('?')[0];
+    const link = baseURL + '?mode=reader&id=' + customId;
     
     document.getElementById('linkInput').value = link;
     btn.textContent='Abrir →'; btn.disabled=false; btn.onclick=()=>window.open(link,'_blank');
     navigator.clipboard.writeText(link).catch(()=>{});
-    showToast('✅ Guardado en Firebase y copiado','ok');
+    showToast('✅ Actualizado en la nube y copiado','ok');
   } catch(err){
-    btn.textContent='Generar link →'; btn.disabled=false;
+    btn.textContent='Guardar en la nube →'; btn.disabled=false;
     showToast('❌ Error al guardar en Firebase','err');
   }
 }
@@ -1149,7 +1146,7 @@ async function tryLoadFromURL(){
   document.body.classList.add('reader-mode');
   const loader = document.createElement('div');
   loader.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;';
-  loader.innerHTML = '<div class="share-spinner" style="width:40px;height:40px;border-width:3px;"></div><p style="font-family:\'DM Sans\',sans-serif;font-size:.82rem;color:var(--muted);">Descargando reporte seguro…</p>';
+  loader.innerHTML = '<div class="share-spinner" style="width:40px;height:40px;border-width:3px;"></div><p style="font-family:\'AvenirNextLTPro-Regular\',sans-serif;font-size:.82rem;color:var(--muted);">Descargando reporte seguro…</p>';
   document.body.appendChild(loader);
 
   try {
@@ -1165,15 +1162,25 @@ async function tryLoadFromURL(){
       loader.remove(); initDashboard(); return true;
     } else { throw new Error("No existe"); }
   } catch(err){
-    loader.innerHTML = '<p style="font-family:\'DM Sans\',sans-serif;color:#8A3A2A;font-size:.85rem;padding:20px;text-align:center;">No se pudo cargar el dashboard.</p>';
+    loader.innerHTML = '<p style="font-family:\'AvenirNextLTPro-Regular\',sans-serif;color:#8A3A2A;font-size:.85rem;padding:20px;text-align:center;">No se pudo cargar el dashboard.</p>';
     return true;
   }
 }
 
-window.onload = () => {
-  const lp = document.getElementById('loginPwd');
-  if(lp) { lp.focus(); lp.onkeydown = (e) => { if(e.key==='Enter') doLogin(); }; }
-};
+// ════════════ INICIALIZACIÓN ════════════
+(async ()=>{
+  while(!window.fb) { await new Promise(r => setTimeout(r, 50)); }
+  const loaded = await tryLoadFromURL();
+  if(!loaded){
+    if(document.body.classList.contains('reader-mode')){
+      const ls=document.getElementById('loginScreen'); if(ls) { ls.style.display = 'none'; ls.remove(); }
+      initDashboard();
+    } else {
+      const lp=document.getElementById('loginPwd'); if(lp) { lp.focus(); lp.onkeydown = (e) => { if(e.key==='Enter') doLogin(); }; }
+      const btn = document.getElementById('loginBtn'); if(btn) btn.onclick = doLogin;
+    }
+  }
+})();
 </script>
 </body>
 </html>
